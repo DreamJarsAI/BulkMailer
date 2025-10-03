@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 from urllib.parse import quote_plus
+import secrets
 
 from fastapi import (
     APIRouter,
@@ -25,6 +26,7 @@ from app.models.domain import RenderedEmail, TemplateContent
 from app.services.csv_loader import CSVParsingError, ParsedCSV, parse_recipients
 from app.services.docx_loader import DocxProcessingError, extract_plain_text
 from app.services.gmail import GmailClient, get_gmail_client
+from app.services.pending_credentials import get_pending_store
 from app.services.token_store import get_token_store
 from app.services.store import get_store
 from app.services.template_renderer import (
@@ -50,8 +52,6 @@ async def landing(request: Request, session_id: str = Depends(get_session_id)) -
     alt_redirect_uri = redirect_uri.replace("localhost", "127.0.0.1")
     context = {
         "request": request,
-        "client_id": state.gmail_client_id or "",
-        "has_secret": bool(state.gmail_client_secret),
         "gmail_authorized": state.gmail_authorized,
         "message": request.query_params.get("message"),
         "error": request.query_params.get("error"),
@@ -68,6 +68,8 @@ async def save_credentials(
     client_secret: str = Form(""),
 ) -> RedirectResponse:
     state = get_store().get(session_id)
+    pending_store = get_pending_store()
+
     errors = []
     client_id = client_id.strip()
     client_secret = client_secret.strip()
@@ -83,10 +85,9 @@ async def save_credentials(
             status_code=status.HTTP_303_SEE_OTHER,
         )
 
-    state.gmail_client_id = client_id
-    state.gmail_client_secret = client_secret
     state.gmail_authorized = False
     get_token_store().clear(session_id)
+    pending_store.set(session_id, client_id, client_secret)
 
     return RedirectResponse(url="/auth/google/start", status_code=status.HTTP_303_SEE_OTHER)
 
@@ -104,7 +105,6 @@ async def recipients_form(
         "template": state.template,
         "errors": [],
         "message": message,
-        "has_credentials": bool(state.gmail_client_id and state.gmail_client_secret),
         "draft_body": state.template.body_template if state.template else "",
         "draft_subject": state.template.subject_template if state.template else "",
     }
@@ -128,7 +128,6 @@ async def recipients_upload(
             "errors": [str(exc)],
             "message": None,
             "template": state.template,
-            "has_credentials": bool(state.gmail_client_id and state.gmail_client_secret),
             "draft_body": state.template.body_template if state.template else "",
             "draft_subject": state.template.subject_template if state.template else "",
         }
@@ -141,7 +140,6 @@ async def recipients_upload(
             "errors": result.errors,
             "message": None,
             "template": state.template,
-            "has_credentials": bool(state.gmail_client_id and state.gmail_client_secret),
             "draft_body": state.template.body_template if state.template else "",
             "draft_subject": state.template.subject_template if state.template else "",
         }
@@ -154,7 +152,6 @@ async def recipients_upload(
             "errors": ["No valid rows found in the CSV."],
             "message": None,
             "template": state.template,
-            "has_credentials": bool(state.gmail_client_id and state.gmail_client_secret),
             "draft_body": state.template.body_template if state.template else "",
             "draft_subject": state.template.subject_template if state.template else "",
         }
@@ -208,7 +205,6 @@ async def template_submit(
                     "template_error": str(exc),
                     "draft_body": body_text,
                     "draft_subject": subject,
-                    "has_credentials": bool(state.gmail_client_id and state.gmail_client_secret),
                 }
                 return templates.TemplateResponse(
                     "recipients.html",
@@ -228,7 +224,6 @@ async def template_submit(
                     "template_error": "Template text file must be UTF-8 encoded.",
                     "draft_body": body_text,
                     "draft_subject": subject,
-                    "has_credentials": bool(state.gmail_client_id and state.gmail_client_secret),
                 }
                 return templates.TemplateResponse(
                     "recipients.html",
@@ -246,7 +241,6 @@ async def template_submit(
             "template_error": "Please provide an email subject.",
             "draft_body": body_text,
             "draft_subject": subject,
-            "has_credentials": bool(state.gmail_client_id and state.gmail_client_secret),
         }
         return templates.TemplateResponse(
             "recipients.html",
@@ -264,7 +258,6 @@ async def template_submit(
             "template_error": "Please provide the email body.",
             "draft_body": body_text,
             "draft_subject": subject,
-            "has_credentials": bool(state.gmail_client_id and state.gmail_client_secret),
         }
         return templates.TemplateResponse(
             "recipients.html",
@@ -289,7 +282,6 @@ async def template_submit(
             "template_error": str(exc),
             "draft_body": body,
             "draft_subject": subject,
-            "has_credentials": bool(state.gmail_client_id and state.gmail_client_secret),
         }
         return templates.TemplateResponse(
             "recipients.html",
@@ -368,19 +360,25 @@ async def update_preview(
 
 
 @router.get("/auth/google/start")
-async def auth_start(session_id: str = Depends(get_session_id)) -> RedirectResponse:
+async def auth_start(request: Request, session_id: str = Depends(get_session_id)) -> RedirectResponse:
     state = get_store().get(session_id)
-    if not (state.gmail_client_id and state.gmail_client_secret):
+    pending = get_pending_store().peek(session_id)
+    if not pending:
         return RedirectResponse(
-            url=f"/?error={quote_plus('Please add your Google OAuth client ID and secret before connecting.')}",
+            url=f"/?error={quote_plus('Please paste your Google OAuth client ID and secret to connect.')}",
             status_code=status.HTTP_303_SEE_OTHER,
         )
 
+    client_id, client_secret = pending
+    state_token = secrets.token_urlsafe(32)
+    request.session["oauth_state"] = state_token
+    # Use the exact host the user is on to avoid cookie/host mismatches
+    callback_url = str(request.url_for("auth_callback"))
     auth_url = _get_gmail_client().authorization_url(
-        session_id,
-        client_id_override=state.gmail_client_id,
-        client_secret_override=state.gmail_client_secret,
-        redirect_override=get_settings().google_redirect_uri,
+        state_token,
+        client_id_override=client_id,
+        client_secret_override=client_secret,
+        redirect_override=callback_url,
     )
     return RedirectResponse(auth_url)
 
@@ -393,7 +391,8 @@ async def auth_callback(
     error: Optional[str] = None,
 ) -> RedirectResponse:
     session_id = request.session.get("session_id")
-    if not session_id or state != session_id:
+    expected_state = request.session.get("oauth_state")
+    if not session_id or not expected_state or state != expected_state:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid session state")
 
     if error:
@@ -403,19 +402,25 @@ async def auth_callback(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing authorization code")
 
     state_data = get_store().get(session_id)
-    if not (state_data.gmail_client_id and state_data.gmail_client_secret):
+    pending_store = get_pending_store()
+    pending = pending_store.pop(session_id)
+    if not pending:
         return RedirectResponse(
             url=f"/?error={quote_plus('Missing client credentials; please add them and try connecting again.')}",
             status_code=status.HTTP_303_SEE_OTHER,
         )
 
+    client_id, client_secret = pending
+    request.session.pop("oauth_state", None)
+
     gmail = _get_gmail_client()
+    callback_url = str(request.url_for("auth_callback"))
     gmail.exchange_code(
         session_id,
         code,
-        client_id_override=state_data.gmail_client_id,
-        client_secret_override=state_data.gmail_client_secret,
-        redirect_override=get_settings().google_redirect_uri,
+        client_id_override=client_id,
+        client_secret_override=client_secret,
+        redirect_override=callback_url,
     )
     state_data.gmail_authorized = True
     return RedirectResponse(url="/preview?auth=success")
@@ -479,4 +484,5 @@ async def download_template() -> FileResponse:
 async def reset_session(session_id: str = Depends(get_session_id)) -> RedirectResponse:
     get_store().clear(session_id)
     get_token_store().clear(session_id)
+    get_pending_store().pop(session_id)
     return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)

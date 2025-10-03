@@ -41,11 +41,10 @@
 
 <form method="post" action="/credentials">
     <label for="client_id">Google OAuth Client ID</label>
-    <input type="text" id="client_id" name="client_id" placeholder="e.g. 123.apps.googleusercontent.com" value="{{ client_id }}" required>
+    <input type="text" id="client_id" name="client_id" placeholder="e.g. 123.apps.googleusercontent.com" required>
 
     <label for="client_secret">Google OAuth Client Secret</label>
-    <input type="password" id="client_secret" name="client_secret" placeholder="Paste client secret" {% if not has_secret %}required{% endif %}>
-    {% if has_secret %}<p><small>Paste a new secret to replace the existing one for this session.</small></p>{% endif %}
+    <input type="password" id="client_secret" name="client_secret" placeholder="Paste client secret" required>
 
     <button type="submit">Connect Google account</button>
 </form>

@@ -48,8 +48,6 @@ class BatchState(BaseModel):
     recipients: List[Recipient] = Field(default_factory=list)
     template: Optional[TemplateContent] = None
     messages: List[RenderedEmail] = Field(default_factory=list)
-    gmail_client_id: Optional[str] = None
-    gmail_client_secret: Optional[str] = None
     gmail_authorized: bool = False
 
     def approvals(self) -> Dict[str, bool]:
