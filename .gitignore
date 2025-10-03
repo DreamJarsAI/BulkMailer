@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.env
+.mypy_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+/.venv
+
+# Token storage (runtime artifact)
+data/token_store.json

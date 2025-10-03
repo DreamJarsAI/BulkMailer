@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Step 3 · Personalize & Send</h2>
+<p>Provide the email subject, tweak individual messages if needed, and choose which recipients should receive the final emails.</p>
+
+{% if auth_status == 'success' %}
+    <p class="success">Google authorization complete. You can send your emails now.</p>
+{% elif auth_status == 'error' %}
+    <p class="error">Google authorization failed: {{ request.query_params.get('message') }}</p>
+{% endif %}
+{% if error %}
+    <p class="error">{{ error }}</p>
+{% endif %}
+{% if message %}
+    <p class="success">{{ message }}</p>
+{% endif %}
+
+{% if not messages %}
+    <p>No messages generated yet. Please upload recipients and provide a template.</p>
+{% else %}
+    <form id="message-update-form" method="post" action="/preview/update">
+        <p><strong>Subject template:</strong> {{ subject }}</p>
+        {% for message in messages %}
+        <div class="card">
+            <div class="card-header">
+                <div>
+                    <h4>{{ loop.index }}. {{ message.recipient.display_name() }}</h4>
+                    <p><small>{{ message.recipient.email }}</small></p>
+                </div>
+                <button type="submit" formaction="/preview/{{ loop.index0 }}/toggle" formmethod="post" class="button button-outline">{% if message.approved %}Suspend{% else %}Approve{% endif %}</button>
+            </div>
+            <p>Subject preview: <strong>{{ message.subject or '(not set yet)' }}</strong></p>
+            <p>Status: <span class="status-badge status-{{ message.status }}">{{ message.status }}</span>
+            {% if message.error_message %}<br><span class="error">{{ message.error_message }}</span>{% endif %}
+            {% if message.sent_at %}<br><small>Sent at {{ message.sent_at }}</small>{% endif %}</p>
+
+            <details>
+                <summary>Message body</summary>
+                <label for="body_{{ loop.index0 }}" class="sr-only">Message body for {{ message.recipient.display_name() }}</label>
+                <textarea id="body_{{ loop.index0 }}" name="body_{{ loop.index0 }}">{{ message.body }}</textarea>
+            </details>
+        </div>
+        {% endfor %}
+
+        <button type="submit">Save all changes</button>
+    </form>
+
+    <div class="actions action-bar">
+        <form method="post" action="/send">
+            <button type="submit" {% if not gmail_authorized %}disabled{% endif %}>Send approved emails</button>
+        </form>
+        <form method="get" action="/auth/google/start">
+            <button type="submit" class="button button-outline">Reconnect Google account</button>
+        </form>
+        <form method="post" action="/reset">
+            <button type="submit" class="button button-outline">Start over</button>
+        </form>
+    </div>
+    {% if not gmail_authorized %}
+        <p><small>Connect your Google account to enable sending.</small></p>
+    {% endif %}
+{% endif %}
+{% endblock %}

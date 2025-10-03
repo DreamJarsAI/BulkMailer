@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ title or 'Email Batch Assistant' }}</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/milligram/1.4.1/milligram.min.css">
+    <style>
+        body { margin: 2rem; }
+        .error { color: #b00020; }
+        .success { color: #2b8a3e; }
+        .status-badge { padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.85rem; }
+        .status-pending { background: #ffe066; }
+        .status-sent { background: #d8f5a2; }
+        .status-failed { background: #ffa8a8; }
+        .status-skipped { background: #ced4da; }
+        table { width: 100%; }
+        textarea { min-height: 12rem; }
+        .layout { max-width: 960px; margin: 0 auto; }
+        .card { border: 1px solid #dee2e6; border-radius: 6px; padding: 1rem; margin: 1rem 0; background: #fafafa; }
+        .card-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+        .actions { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; }
+        .action-bar { margin-top: 1.5rem; }
+        .action-bar form { display: inline; }
+        details { margin-top: 0.75rem; }
+        summary { cursor: pointer; font-weight: 600; }
+        .sr-only { border: 0; clip: rect(0, 0, 0, 0); height: 1px; margin: -1px; overflow: hidden; padding: 0; position: absolute; width: 1px; }
+    </style>
+</head>
+<body>
+    <div class="layout">
+        <h1>Email Batch Assistant</h1>
+        <nav>
+            <a href="/">1. Connect Gmail</a> |
+            <a href="/recipients">2. Upload & Draft</a> |
+            <a href="/preview">3. Personalize & Send</a>
+        </nav>
+        <hr>
+        {% if message %}
+            <p class="success">{{ message }}</p>
+        {% endif %}
+        {% block content %}{% endblock %}
+    </div>
+</body>
+</html>
