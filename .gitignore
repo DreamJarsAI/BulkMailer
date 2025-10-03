@@ -7,6 +7,8 @@ __pycache__/
 .coverage
 htmlcov/
 /.venv
+.codex/
+.bash_history
 
 # Token storage (runtime artifact)
 data/token_store.json
