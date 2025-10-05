@@ -16,9 +16,8 @@
             <li>Go to <em>APIs & Services → Credentials</em>.</li>
             <li>Click <strong>Create Credentials → OAuth Client ID</strong>.</li>
             <li>Choose <strong>Web Application</strong>.</li>
-            <li>Under <strong>Authorized Redirect URIs</strong>, add your URI:<br>
-                <code>&lt;YOUR_REDIRECT_URI_HERE&gt;</code><br>
-                <small>(For this app use <code>{{ redirect_uri }}</code>{% if redirect_uri != alt_redirect_uri %}; add <code>{{ alt_redirect_uri }}</code> if you browse via 127.0.0.1{% endif %})</small>
+            <li>Under <strong>Authorized Redirect URIs</strong>, add the following URI:<br>
+                <code>https://bulkmailer-y8hr.onrender.com/auth/google/callback</code>
             </li>
             <li>Click <strong>Create</strong>.</li>
         </ul>
@@ -48,14 +47,6 @@
 
     <button type="submit">Connect Google account</button>
 </form>
-
-{% if env_has_oauth %}
-<p>
-    <em>Or</em>
-    <a class="button" href="/auth/google/start">Use server-configured credentials</a>
-    <small>(Client ID/Secret are set via environment)</small>
-    </p>
-{% endif %}
 
 {% if gmail_authorized %}<p class="success">Gmail connected ✔</p>{% endif %}
 

@@ -18,7 +18,7 @@ pip install -e .[dev]
 
 ## Environment Variables
 
-Create a `.env` file (never commit it) with at least the following values:
+Create a `.env` file (never commit it) with the following values:
 
 ```
 BATCH_APP_SECRET_KEY=your-session-secret
@@ -28,16 +28,7 @@ BATCH_APP_TOKEN_STORAGE_PATH=./data/token_store.json
 BATCH_APP_SESSION_LIFETIME_MINUTES=120
 ```
 
-Google OAuth credentials can be provided in one of two ways:
-
-1) Paste via the app UI (recommended for demos): no additional env needed.
-
-2) Preconfigure via environment variables (headless deployments):
-
-```
-BATCH_APP_GOOGLE_CLIENT_ID=your-google-client-id
-BATCH_APP_GOOGLE_CLIENT_SECRET=your-google-client-secret
-```
+Google OAuth credentials are provided interactively by the user on the app's landing page (Client ID and Client Secret). The server does not use env-provided OAuth client credentials.
 
 Generate the Fernet key with:
 

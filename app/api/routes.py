@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Optional
+import re
 from urllib.parse import quote_plus, urlparse
 import logging
 import secrets
@@ -60,8 +61,6 @@ async def landing(request: Request, session_id: str = Depends(get_session_id)) -
         "error": request.query_params.get("error"),
         "redirect_uri": redirect_uri,
         "alt_redirect_uri": alt_redirect_uri,
-        # Show a shortcut button if credentials are preconfigured via env
-        "env_has_oauth": bool(settings.google_client_id and settings.google_client_secret),
     }
     return templates.TemplateResponse("landing.html", context)
 
@@ -76,8 +75,9 @@ async def save_credentials(
     pending_store = get_pending_store()
 
     errors = []
-    client_id = client_id.strip()
-    client_secret = client_secret.strip()
+    # Normalize inputs to avoid common copy/paste issues
+    client_id = client_id.strip().strip('"').strip("'")
+    client_secret = client_secret.strip().strip('"').strip("'")
 
     if not client_id:
         errors.append("Client ID is required.")
@@ -89,6 +89,9 @@ async def save_credentials(
         errors.append("The Client ID field looks like a secret. Paste the value that ends with .apps.googleusercontent.com.")
     if client_id and ".apps.googleusercontent.com" not in client_id:
         errors.append("Client ID should end with .apps.googleusercontent.com.")
+    # Client IDs start with a 12-digit project number; catch truncated values
+    if client_id and not re.match(r"^\d{12}-[A-Za-z0-9\-]+\.apps\.googleusercontent\.com$", client_id):
+        errors.append("Client ID format looks wrong. It should start with 12 digits and end with .apps.googleusercontent.com.")
 
     if errors:
         return RedirectResponse(
@@ -378,18 +381,10 @@ async def auth_start(request: Request, session_id: str = Depends(get_session_id)
     if pending:
         client_id, client_secret = pending
     else:
-        # Fall back to environment-provided credentials if available
-        settings = get_settings()
-        if settings.google_client_id and settings.google_client_secret:
-            client_id = settings.google_client_id
-            client_secret = settings.google_client_secret
-            # Persist in pending store so callback can retrieve them
-            pending_store.set(session_id, client_id, client_secret)
-        else:
-            return RedirectResponse(
-                url=f"/?error={quote_plus('Please paste your Google OAuth client ID and secret to connect.')}",
-                status_code=status.HTTP_303_SEE_OTHER,
-            )
+        return RedirectResponse(
+            url=f"/?error={quote_plus('Please paste your Google OAuth client ID and secret to connect.')}",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
     state_token = secrets.token_urlsafe(32)
     request.session["oauth_state"] = state_token
     # Persist creds keyed by state to avoid cookie reliance during callback
@@ -447,15 +442,10 @@ async def auth_callback(
         if pending:
             client_id, client_secret = pending
         else:
-            settings = get_settings()
-            if settings.google_client_id and settings.google_client_secret:
-                client_id = settings.google_client_id
-                client_secret = settings.google_client_secret
-            else:
-                return RedirectResponse(
-                    url=f"/?error={quote_plus('Missing client credentials; please add them and try connecting again.')}",
-                    status_code=status.HTTP_303_SEE_OTHER,
-                )
+            return RedirectResponse(
+                url=f"/?error={quote_plus('Missing client credentials; please add them and try connecting again.')}",
+                status_code=status.HTTP_303_SEE_OTHER,
+            )
 
     request.session.pop("oauth_state", None)
 

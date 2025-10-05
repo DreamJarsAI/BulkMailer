@@ -8,6 +8,7 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+import logging
 
 from app.api.routes import router as web_router
 from app.config import get_settings
@@ -32,6 +33,14 @@ def create_app() -> FastAPI:
     # Respect X-Forwarded-* headers on platforms like Render to ensure
     # correct scheme/host when constructing absolute callback URLs.
     app.add_middleware(ProxyHeadersMiddleware)
+    # Ensure our OAuth diagnostics are visible at INFO level
+    oauth_logger = logging.getLogger("app.oauth")
+    oauth_logger.setLevel(logging.INFO)
+    if not oauth_logger.handlers:
+        handler = logging.StreamHandler()
+        formatter = logging.Formatter("%(levelname)s:%(name)s:%(message)s")
+        handler.setFormatter(formatter)
+        oauth_logger.addHandler(handler)
     app.add_middleware(
         TrustedHostMiddleware,
         allowed_hosts=["*"],
