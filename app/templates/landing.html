@@ -49,6 +49,14 @@
     <button type="submit">Connect Google account</button>
 </form>
 
+{% if env_has_oauth %}
+<p>
+    <em>Or</em>
+    <a class="button" href="/auth/google/start">Use server-configured credentials</a>
+    <small>(Client ID/Secret are set via environment)</small>
+    </p>
+{% endif %}
+
 {% if gmail_authorized %}<p class="success">Gmail connected ✔</p>{% endif %}
 
 <p><a class="button button-outline" href="/recipients">Next: Upload recipients</a></p>

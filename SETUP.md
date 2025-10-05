@@ -18,16 +18,25 @@ pip install -e .[dev]
 
 ## Environment Variables
 
-Create a `.env` file (never commit it) with the following values:
+Create a `.env` file (never commit it) with at least the following values:
 
 ```
 BATCH_APP_SECRET_KEY=your-session-secret
 BATCH_APP_FERNET_KEY=urlsafe-base64-32-byte-key
-BATCH_APP_GOOGLE_CLIENT_ID=your-google-client-id
-BATCH_APP_GOOGLE_CLIENT_SECRET=your-google-client-secret
 BATCH_APP_GOOGLE_REDIRECT_URI=http://localhost:8000/auth/google/callback
 BATCH_APP_TOKEN_STORAGE_PATH=./data/token_store.json
 BATCH_APP_SESSION_LIFETIME_MINUTES=120
+```
+
+Google OAuth credentials can be provided in one of two ways:
+
+1) Paste via the app UI (recommended for demos): no additional env needed.
+
+2) Preconfigure via environment variables (headless deployments):
+
+```
+BATCH_APP_GOOGLE_CLIENT_ID=your-google-client-id
+BATCH_APP_GOOGLE_CLIENT_SECRET=your-google-client-secret
 ```
 
 Generate the Fernet key with:
@@ -67,7 +76,7 @@ mypy .
 
 ## Render Deployment Notes
 
-- Configure the environment variables above in Render's dashboard.
+- Configure the required environment variables above in Render's dashboard.
 - Mount a persistent disk if you want refresh tokens to survive restarts (`/opt/render/project/src/data`).
 - Set the start command to `uvicorn app.main:app --host 0.0.0.0 --port $PORT`.
 - Add your Render domain to the Google OAuth credential redirect URIs.

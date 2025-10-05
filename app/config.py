@@ -19,9 +19,12 @@ class Settings(BaseSettings):
     app_name: str = "Email Batch Assistant"
     secret_key: str = Field(..., description="Secret used for session signing")
     fernet_key: str = Field(..., description="Key for encrypting refresh tokens")
-    google_client_id: str = Field(..., description="OAuth client ID for Google")
-    google_client_secret: str = Field(
-        ..., description="OAuth client secret for Google"
+    # Optional: when not provided, users can paste credentials in the UI
+    google_client_id: str | None = Field(
+        None, description="OAuth client ID for Google (optional)"
+    )
+    google_client_secret: str | None = Field(
+        None, description="OAuth client secret for Google (optional)"
     )
     google_redirect_uri: str = Field(
         "http://localhost:8000/auth/google/callback",

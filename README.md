@@ -51,9 +51,9 @@ app/
 ## Deployment on Render
 
 - Add a Render web service with the start command `uvicorn app.main:app --host 0.0.0.0 --port $PORT`.
-- Configure environment variables listed in [SETUP.md](SETUP.md).
-- Ensure the Fernet key and Google credentials are stored securely via Render secrets.
-- The app writes encrypted refresh tokens to `data/token_store.json`; Render's persistent disk should be attached if reuse is desired. Otherwise users will re-authenticate when the service restarts.
+- Configure required env vars from [SETUP.md](SETUP.md): `BATCH_APP_SECRET_KEY`, `BATCH_APP_FERNET_KEY`, and optionally `BATCH_APP_GOOGLE_REDIRECT_URI`.
+- Google OAuth client ID/secret are optional as environment variables. You can either supply `BATCH_APP_GOOGLE_CLIENT_ID` and `BATCH_APP_GOOGLE_CLIENT_SECRET` via Render secrets, or simply paste them in the app’s UI on the landing page.
+- The app writes encrypted refresh tokens to `data/token_store.json`; attach a persistent disk if reuse is desired. Otherwise users will re‑authenticate when the service restarts.
 
 ## Support
 

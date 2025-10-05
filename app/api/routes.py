@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Optional
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlparse
+import logging
 import secrets
 
 from fastapi import (
@@ -27,6 +28,7 @@ from app.services.csv_loader import CSVParsingError, ParsedCSV, parse_recipients
 from app.services.docx_loader import DocxProcessingError, extract_plain_text
 from app.services.gmail import GmailClient, get_gmail_client
 from app.services.pending_credentials import get_pending_store
+from app.services.pending_state_store import get_state_store
 from app.services.token_store import get_token_store
 from app.services.store import get_store
 from app.services.template_renderer import (
@@ -36,6 +38,7 @@ from app.services.template_renderer import (
 )
 
 router = APIRouter()
+logger = logging.getLogger("app.oauth")
 templates = Jinja2Templates(directory="app/templates")
 
 
@@ -57,6 +60,8 @@ async def landing(request: Request, session_id: str = Depends(get_session_id)) -
         "error": request.query_params.get("error"),
         "redirect_uri": redirect_uri,
         "alt_redirect_uri": alt_redirect_uri,
+        # Show a shortcut button if credentials are preconfigured via env
+        "env_has_oauth": bool(settings.google_client_id and settings.google_client_secret),
     }
     return templates.TemplateResponse("landing.html", context)
 
@@ -78,6 +83,12 @@ async def save_credentials(
         errors.append("Client ID is required.")
     if not client_secret:
         errors.append("Client secret is required.")
+
+    # Guard against common paste mistakes
+    if client_id and client_id.startswith("GOCSPX-"):
+        errors.append("The Client ID field looks like a secret. Paste the value that ends with .apps.googleusercontent.com.")
+    if client_id and ".apps.googleusercontent.com" not in client_id:
+        errors.append("Client ID should end with .apps.googleusercontent.com.")
 
     if errors:
         return RedirectResponse(
@@ -362,16 +373,27 @@ async def update_preview(
 @router.get("/auth/google/start")
 async def auth_start(request: Request, session_id: str = Depends(get_session_id)) -> RedirectResponse:
     state = get_store().get(session_id)
-    pending = get_pending_store().peek(session_id)
-    if not pending:
-        return RedirectResponse(
-            url=f"/?error={quote_plus('Please paste your Google OAuth client ID and secret to connect.')}",
-            status_code=status.HTTP_303_SEE_OTHER,
-        )
-
-    client_id, client_secret = pending
+    pending_store = get_pending_store()
+    pending = pending_store.peek(session_id)
+    if pending:
+        client_id, client_secret = pending
+    else:
+        # Fall back to environment-provided credentials if available
+        settings = get_settings()
+        if settings.google_client_id and settings.google_client_secret:
+            client_id = settings.google_client_id
+            client_secret = settings.google_client_secret
+            # Persist in pending store so callback can retrieve them
+            pending_store.set(session_id, client_id, client_secret)
+        else:
+            return RedirectResponse(
+                url=f"/?error={quote_plus('Please paste your Google OAuth client ID and secret to connect.')}",
+                status_code=status.HTTP_303_SEE_OTHER,
+            )
     state_token = secrets.token_urlsafe(32)
     request.session["oauth_state"] = state_token
+    # Persist creds keyed by state to avoid cookie reliance during callback
+    get_state_store().set(state_token, client_id, client_secret)
     # Use the exact host the user is on to avoid cookie/host mismatches
     callback_url = str(request.url_for("auth_callback"))
     auth_url = _get_gmail_client().authorization_url(
@@ -380,6 +402,16 @@ async def auth_start(request: Request, session_id: str = Depends(get_session_id)
         client_secret_override=client_secret,
         redirect_override=callback_url,
     )
+    try:
+        logger.info(
+            "oauth_start state=%s cid=*%s redirect_uri=%s auth_host=%s",
+            state_token[:6],
+            client_id[-6:] if client_id else "",
+            callback_url,
+            urlparse(auth_url).netloc,
+        )
+    except Exception:
+        pass
     return RedirectResponse(auth_url)
 
 
@@ -392,8 +424,10 @@ async def auth_callback(
 ) -> RedirectResponse:
     session_id = request.session.get("session_id")
     expected_state = request.session.get("oauth_state")
-    if not session_id or not expected_state or state != expected_state:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid session state")
+    if not session_id:
+        # Create a session to associate tokens if cookies are absent
+        session_id = secrets.token_urlsafe(16)
+        request.session["session_id"] = session_id
 
     if error:
         return RedirectResponse(url=f"/preview?auth=error&message={error}")
@@ -403,18 +437,40 @@ async def auth_callback(
 
     state_data = get_store().get(session_id)
     pending_store = get_pending_store()
-    pending = pending_store.pop(session_id)
-    if not pending:
-        return RedirectResponse(
-            url=f"/?error={quote_plus('Missing client credentials; please add them and try connecting again.')}",
-            status_code=status.HTTP_303_SEE_OTHER,
-        )
+    # Prefer credentials recorded for this OAuth state
+    state_record = get_state_store().pop(state)
+    if state_record:
+        client_id, client_secret = state_record
+        pending = None
+    else:
+        pending = pending_store.pop(session_id)
+        if pending:
+            client_id, client_secret = pending
+        else:
+            settings = get_settings()
+            if settings.google_client_id and settings.google_client_secret:
+                client_id = settings.google_client_id
+                client_secret = settings.google_client_secret
+            else:
+                return RedirectResponse(
+                    url=f"/?error={quote_plus('Missing client credentials; please add them and try connecting again.')}",
+                    status_code=status.HTTP_303_SEE_OTHER,
+                )
 
-    client_id, client_secret = pending
     request.session.pop("oauth_state", None)
 
     gmail = _get_gmail_client()
     callback_url = str(request.url_for("auth_callback"))
+    try:
+        logger.info(
+            "oauth_callback state=%s code=%s state_hit=%s pending_hit=%s",
+            state[:6],
+            bool(code),
+            bool(state_record),
+            bool(pending),
+        )
+    except Exception:
+        pass
     gmail.exchange_code(
         session_id,
         code,
